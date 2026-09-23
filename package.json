@@ -1,0 +1,9 @@
+{
+  "name": "assert-online",
+  "private": true,
+  "version": "1.0.0",
+  "description": "ASSERT educational game frontend + Netlify backend",
+  "dependencies": {
+    "@netlify/blobs": "latest"
+  }
+}
