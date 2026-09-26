@@ -1,9 +1,9 @@
 {
-  "name": "assert-online",
+  "name": "assert-bk-ppg",
   "private": true,
-  "version": "1.0.0",
-  "description": "ASSERT educational game frontend + Netlify backend",
+  "type": "module",
   "dependencies": {
-    "@netlify/blobs": "latest"
+    "@netlify/blobs": "11.1.1"
   }
 }
+
