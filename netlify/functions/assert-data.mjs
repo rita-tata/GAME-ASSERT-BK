@@ -8,7 +8,7 @@ const store = () => getStore({ name: STORE_NAME, consistency: 'strong' });
 const cors = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'Content-Type, X-ASSERT-BK-CODE',
-  'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+  'Access-Control-Allow-Methods': 'GET, POST, DELETE, OPTIONS',
   'Content-Type': 'application/json; charset=utf-8'
 };
 
@@ -54,8 +54,30 @@ function mergeRecord(existing, incoming) {
     }
   }
   merged.interactionLog = [...events.values()]
-    .sort((a, b) => timeValue(a.at) - timeValue(b.at))
-    .slice(-350);
+    .sort((a, b) => timeValue(a.at) - timeValue(b.at));
+
+  // Merge the per-mission history independently so no mission's answers are lost.
+  const history = {};
+  for (const source of [oldRecord.missionHistory, newRecord.missionHistory]) {
+    if (!source || typeof source !== 'object') continue;
+    for (const [mission, list] of Object.entries(source)) {
+      if (!Array.isArray(list)) continue;
+      history[mission] = Array.isArray(history[mission]) ? history[mission] : [];
+      for (const event of list) {
+        if (!event || typeof event !== 'object') continue;
+        const id = String(event.id || `${event.at || ''}|${mission}|${event.type || ''}|${event.answer || ''}`);
+        if (!history[mission].some(x => String(x?.id || '') === id)) history[mission].push(event);
+      }
+      history[mission].sort((a, b) => timeValue(a.at) - timeValue(b.at));
+    }
+  }
+  merged.missionHistory = history;
+
+  // Prefer the newest saved resume point. This is separate from completedMissions.
+  const resumeCandidates = [oldRecord.resumeState, newRecord.resumeState].filter(Boolean);
+  merged.resumeState = resumeCandidates.length ? resumeCandidates[resumeCandidates.length - 1] : null;
+  merged.lastMission = Number(newRecord.lastMission || oldRecord.lastMission || 0);
+  merged.lastMissionAt = newRecord.lastMissionAt || oldRecord.lastMissionAt || null;
 
   merged.updatedAt = new Date(Math.max(oldTime, newTime, Date.now())).toISOString();
   return merged;
@@ -83,6 +105,22 @@ export default async (req) => {
 
       await db.setJSON(key, merged);
       return json({ ok: true, player: merged.player, updatedAt: merged.updatedAt });
+    }
+
+    if (req.method === 'DELETE') {
+      const code = req.headers.get('x-assert-bk-code') || '';
+      if (code !== TEACHER_CODE) return json({ error: 'Unauthorized' }, 401);
+
+      const body = await req.json().catch(() => null);
+      const player = String(body?.player || '').trim();
+      if (!player) return json({ error: 'Nama siswa wajib diisi' }, 400);
+
+      const key = studentKey(player);
+      const existing = await db.get(key, { type: 'json', consistency: 'strong' }).catch(() => null);
+      if (!existing) return json({ error: 'Data siswa tidak ditemukan' }, 404);
+
+      await db.delete(key);
+      return json({ ok: true, deleted: player });
     }
 
     if (req.method === 'GET') {
